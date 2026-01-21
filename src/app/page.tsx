@@ -70,7 +70,7 @@ export default function Page() {
       {showHero && <Hero userName={name} />}
 
       <DepartmentSpeech />
-      <AssistantSpeech lunaImgSrc="/images/luna.jpg" />
+      <AssistantSpeech lunaImgSrc="/images/luna.JPG" />
 
       <Guestbook entryGateName={name} />
 
