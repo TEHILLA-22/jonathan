@@ -1,39 +1,27 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { RefObject } from 'react'
 
+// Accept multiple refs
 type Props = {
-  audioRef: React.RefObject<HTMLAudioElement>
+  audioRefs: RefObject<HTMLAudioElement | null>[]
 }
 
-export default function AudioToggle({ audioRef }: Props) {
-  const [muted, setMuted] = useState(true)
-
-  const toggle = () => {
-    if (!audioRef.current) return
-    if (muted) {
-      audioRef.current.muted = false
-      audioRef.current.play().catch(() => {})
-    } else {
-      audioRef.current.muted = true
-    }
-    setMuted(!muted)
+export default function AudioToggle({ audioRefs }: Props) {
+  const toggleAudio = () => {
+    audioRefs.forEach((ref) => {
+      if (!ref.current) return
+      if (ref.current.paused) ref.current.play()
+      else ref.current.pause()
+    })
   }
 
   return (
     <button
-      onClick={toggle}
-      className={`
-        fixed bottom-6 right-6
-        z-50
-        bg-white/5 backdrop-blur-sm
-        border border-white/10
-        px-4 py-2 rounded-full
-        text-sm text-cyan-300
-        hover:bg-cyan-500/20 transition
-      `}
+      onClick={toggleAudio}
+      className="fixed bottom-4 right-4 bg-cyan-500/20 text-white px-4 py-2 rounded-lg backdrop-blur-sm hover:bg-cyan-500/40 transition"
     >
-      {muted ? 'Unmute 🔊' : 'Mute 🔇'}
+      🔊 Toggle Music
     </button>
   )
 }
