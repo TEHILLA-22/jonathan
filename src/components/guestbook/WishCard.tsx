@@ -27,36 +27,63 @@ export default function WishCard({ wish, entryGateName }: Props) {
       .select('*')
       .eq('wish_id', wish.id)
       .order('created_at', { ascending: true })
+
     if (data) setReplies(data)
   }
 
   useEffect(() => {
-    fetchReplies()
+    let channel: ReturnType<typeof supabase.channel> | null = null
 
-    const sub = supabase
-      .channel(`public:wish_replies_${wish.id}`)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'wish_replies', filter: `wish_id=eq.${wish.id}` },
-        (payload) => {
-          setReplies((prev) => [...prev, payload.new])
-        }
-      )
-      .subscribe()
+    const init = async () => {
+      await fetchReplies()
 
-    return () => supabase.removeChannel(sub)
-  }, [])
+      channel = supabase
+        .channel(`public:wish_replies_${wish.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'wish_replies',
+            filter: `wish_id=eq.${wish.id}`,
+          },
+          (payload) => {
+            const newReply = payload.new
+
+            setReplies((prev) => {
+              // prevent duplicate optimistic insert
+              if (prev.some((r) => r.created_at === newReply.created_at)) {
+                return prev
+              }
+              return [...prev, newReply]
+            })
+          }
+        )
+        .subscribe()
+    }
+
+    init()
+
+    // ✅ synchronous cleanup ONLY
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel)
+      }
+    }
+  }, [wish.id])
 
   const submitReply = async () => {
     if (!replyMsg.trim()) return
-    const newReply = {
+
+    const optimisticReply = {
       id: Date.now(),
       wish_id: wish.id,
-      name: entryGateName, // dynamic name
+      name: entryGateName,
       message: replyMsg,
       created_at: new Date().toISOString(),
     }
-    setReplies((prev) => [...prev, newReply])
+
+    setReplies((prev) => [...prev, optimisticReply])
     setReplyMsg('')
     setShowReplyInput(false)
 
@@ -77,8 +104,12 @@ export default function WishCard({ wish, entryGateName }: Props) {
     >
       <div className="flex justify-between items-start">
         <div>
-          <span className="font-semibold text-cyan-300">{wish.name}:</span> {wish.message}
+          <span className="font-semibold text-cyan-300">
+            {wish.name}:
+          </span>{' '}
+          {wish.message}
         </div>
+
         <button
           onClick={() => setReactionMenuOpen(!reactionMenuOpen)}
           className="text-sm text-cyan-400 hover:text-cyan-200"
