@@ -17,13 +17,21 @@ export default function Page() {
   const [name, setName] = useState('')
   const [showHero, setShowHero] = useState(false)
 
-  const audioRef = useRef<HTMLAudioElement>(null)
+  // Two audio refs
+  const track1Ref = useRef<HTMLAudioElement | null>(null)
+  const track2Ref = useRef<HTMLAudioElement | null>(null)
 
   const enableAudio = () => {
-    if (!audioRef.current) return
-    audioRef.current.muted = false
-    audioRef.current.volume = 0.4
-    audioRef.current.play().catch(() => {})
+    if (track1Ref.current) {
+      track1Ref.current.muted = false
+      track1Ref.current.volume = 0.4
+      track1Ref.current.play().catch(() => {})
+    }
+    if (track2Ref.current) {
+      track2Ref.current.muted = false
+      track2Ref.current.volume = 0.4
+      track2Ref.current.play().catch(() => {})
+    }
   }
 
   // delay mounting Hero by 3s after entry
@@ -41,14 +49,11 @@ export default function Page() {
       <BluePulse />
 
       {/* Background audio */}
-      <audio
-        ref={audioRef}
-        src="/audio/track1.mp3"
-        loop
-        muted
-      />
+      <audio ref={track1Ref} src="/audio/track1.mp3" loop muted />
+      <audio ref={track2Ref} src="/audio/track2.mp3" loop muted />
 
-      <AudioToggle audioRef={audioRef} />
+      {/* Audio toggle */}
+      <AudioToggle audioRefs={[track1Ref, track2Ref]} />
 
       {/* Entry gate */}
       {!entered && (
@@ -65,13 +70,13 @@ export default function Page() {
       {showHero && <Hero userName={name} />}
 
       <DepartmentSpeech />
-    <AssistantSpeech lunaImgSrc="/images/luna.jpg" />
+      <AssistantSpeech lunaImgSrc="/images/luna.jpg" />
 
-    <Guestbook entryGateName={name} />
+      <Guestbook entryGateName={name} />
 
-    <GallerySection />
+      <GallerySection />
 
-<BuyMeACoffee />
+      <BuyMeACoffee />
 
       <Footer />
     </>
