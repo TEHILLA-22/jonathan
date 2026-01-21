@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { createClient } from '@supabase/supabase-js'
 import ReactionMenu from './ReactionMenu'
 
@@ -17,37 +17,55 @@ export default function ReplyCard({ reply }: Props) {
   const [reactions, setReactions] = useState<any[]>([])
   const [reactionMenuOpen, setReactionMenuOpen] = useState(false)
 
-  // Fetch reactions for this reply
   const fetchReactions = async () => {
     const { data } = await supabase
       .from('wish_reactions')
       .select('*')
       .eq('reply_id', reply.id)
+
     if (data) setReactions(data)
   }
 
   useEffect(() => {
-    fetchReactions()
+    let channel: ReturnType<typeof supabase.channel> | null = null
 
-    // Subscribe to new reactions for this reply
-    const sub = supabase
-      .channel(`public:wish_reactions_reply_${reply.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'wish_reactions',
-          filter: `reply_id=eq.${reply.id}`,
-        },
-        (payload) => {
-          setReactions((prev) => [...prev, payload.new])
-        }
-      )
-      .subscribe()
+    const init = async () => {
+      await fetchReactions()
 
-    return () => supabase.removeChannel(sub)
-  }, [])
+      channel = supabase
+        .channel(`public:wish_reactions_reply_${reply.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'wish_reactions',
+            filter: `reply_id=eq.${reply.id}`,
+          },
+          (payload) => {
+            const newReaction = payload.new
+
+            setReactions((prev) => {
+              // prevent duplicate reactions
+              if (prev.some((r) => r.id === newReaction.id)) {
+                return prev
+              }
+              return [...prev, newReaction]
+            })
+          }
+        )
+        .subscribe()
+    }
+
+    init()
+
+    // ✅ synchronous cleanup ONLY
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel)
+      }
+    }
+  }, [reply.id])
 
   return (
     <motion.div
@@ -59,8 +77,12 @@ export default function ReplyCard({ reply }: Props) {
     >
       <div className="flex justify-between items-start">
         <div>
-          <span className="font-semibold text-cyan-300">{reply.name}:</span> {reply.message}
+          <span className="font-semibold text-cyan-300">
+            {reply.name}:
+          </span>{' '}
+          {reply.message}
         </div>
+
         <button
           onClick={() => setReactionMenuOpen(!reactionMenuOpen)}
           className="text-xs text-cyan-400 hover:text-cyan-200"
@@ -69,10 +91,8 @@ export default function ReplyCard({ reply }: Props) {
         </button>
       </div>
 
-      {/* Reaction menu */}
       {reactionMenuOpen && <ReactionMenu replyId={reply.id} />}
 
-      {/* Display reaction counts */}
       {reactions.length > 0 && (
         <div className="flex gap-1 mt-1">
           {reactions.map((r) => (
