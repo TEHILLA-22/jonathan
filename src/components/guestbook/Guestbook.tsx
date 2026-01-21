@@ -12,64 +12,92 @@ type Wish = {
   created_at: string
 }
 
-// Supabase client using your key
+// Supabase client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!
 const supabase = createClient(supabaseUrl, supabaseKey)
 
 interface Props {
-  entryGateName: string // name user entered at entry gate
+  entryGateName: string
 }
 
 export default function Guestbook({ entryGateName }: Props) {
   const [message, setMessage] = useState('')
   const [wishes, setWishes] = useState<Wish[]>([])
 
-  // Fetch initial comments
+  // Fetch initial wishes
   const fetchWishes = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('wishes')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(10)
-    if (data) setWishes(data)
+
+    if (!error && data) {
+      setWishes(data)
+    }
   }
 
   useEffect(() => {
-    fetchWishes()
+    let channel: ReturnType<typeof supabase.channel> | null = null
 
-    // Subscribe to new comments
-    const sub = supabase
-      .channel('public:wishes')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'wishes' },
-        (payload) => {
-          setWishes((prev) => [payload.new, ...prev])
-        }
-      )
-      .subscribe()
+    const init = async () => {
+      await fetchWishes()
 
-    return () => supabase.removeChannel(sub)
+      channel = supabase
+        .channel('public:wishes')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'wishes',
+          },
+          (payload) => {
+            const newWish = payload.new as Wish
+
+            setWishes((prev) => {
+              // prevent duplicate optimistic inserts
+              if (prev.some((w) => w.id === newWish.id)) {
+                return prev
+              }
+              return [newWish, ...prev]
+            })
+          }
+        )
+        .subscribe()
+    }
+
+    init()
+
+    // ✅ MUST be synchronous (no Promise returned)
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel)
+      }
+    }
   }, [])
 
-  // Submit new comment with optimistic update
+  // Submit new wish (optimistic UI)
   const submitWish = async () => {
     if (!message.trim()) return
 
-    const newWish: Wish = {
-      id: Date.now(), // temporary ID
+    const optimisticWish: Wish = {
+      id: Date.now(), // temporary
       name: entryGateName,
       message,
       created_at: new Date().toISOString(),
     }
 
     // Show instantly
-    setWishes((prev) => [newWish, ...prev])
+    setWishes((prev) => [optimisticWish, ...prev])
     setMessage('')
 
-    // Insert into Supabase
-    await supabase.from('wishes').insert({ name: entryGateName, message })
+    // Persist to DB
+    await supabase.from('wishes').insert({
+      name: entryGateName,
+      message,
+    })
   }
 
   return (
@@ -94,6 +122,7 @@ export default function Guestbook({ entryGateName }: Props) {
             rows={3}
             className="w-full rounded-lg px-4 py-2 bg-black/30 border border-white/10 text-white outline-none focus:ring-1 focus:ring-cyan-400/40"
           />
+
           <button
             onClick={submitWish}
             className="mt-2 w-full rounded-lg py-2 bg-cyan-500/10 text-cyan-300 border border-cyan-400/20 hover:bg-cyan-500/20 transition"
@@ -102,11 +131,15 @@ export default function Guestbook({ entryGateName }: Props) {
           </button>
         </div>
 
-        {/* Comments */}
+        {/* Wishes */}
         <div className="mt-6 flex flex-col gap-3">
           <AnimatePresence>
             {wishes.map((wish) => (
-              <WishCard key={wish.id} wish={wish} entryGateName={entryGateName} />
+              <WishCard
+                key={wish.id}
+                wish={wish}
+                entryGateName={entryGateName}
+              />
             ))}
           </AnimatePresence>
         </div>
